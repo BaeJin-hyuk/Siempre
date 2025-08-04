@@ -41,6 +41,8 @@
   <br>
   <button onclick="generateMatches()">대진표 생성</button>
   <button onclick="clearMatches()">모든 경기 삭제</button>
+  <button onclick="resetAll()">🔄 모든 데이터 초기화</button>
+
 
   <div id="matchList"></div>
   <textarea id="result" readonly></textarea>
@@ -50,6 +52,21 @@ let players = [];
 let matches = [];
 let finalizedMatches = [];
 let playerGameCounts = {};
+
+function saveToLocalStorage() {
+  localStorage.setItem("players", JSON.stringify(players));
+  localStorage.setItem("playerGameCounts", JSON.stringify(playerGameCounts));
+  localStorage.setItem("finalizedMatches", JSON.stringify(finalizedMatches));
+}
+
+function loadFromLocalStorage() {
+  const p = localStorage.getItem("players");
+  const c = localStorage.getItem("playerGameCounts");
+  const m = localStorage.getItem("finalizedMatches");
+  if (p) players = JSON.parse(p);
+  if (c) playerGameCounts = JSON.parse(c);
+  if (m) finalizedMatches = JSON.parse(m);
+}
 
 function skillToGrade(score) {
   return {0: "초심", 1: "E", 2: "D", 3: "C", 4: "B", 5: "A"}[score] || "?";
@@ -67,6 +84,7 @@ function addPlayer() {
   playerGameCounts[name] = 0;
   document.getElementById("nameInput").value = "";
   updatePlayerList();
+saveToLocalStorage();
 }
 
 function updatePlayerList() {
@@ -96,6 +114,7 @@ function clearMatches() {
   }
   updatePlayerList();
   updateMatchList();
+saveToLocalStorage();
 }
 
 function shuffle(array) {
@@ -159,6 +178,7 @@ function generateMatches() {
 
   updatePlayerList();
   updateMatchList();
+saveToLocalStorage();
 }
 
 function finalizeMatch(index) {
@@ -190,6 +210,7 @@ function finalizeMatch(index) {
 
   updatePlayerList();
   updateMatchList();
+saveToLocalStorage();
 }
 
 function updateMatchList() {
@@ -241,6 +262,26 @@ function playerSelect(id, selected, excludedNames = []) {
     </select>`;
 }
 
+function resetAll() {
+  if (!confirm("정말 모든 데이터를 초기화할까요? 복구할 수 없습니다.")) return;
+
+  players = [];
+  matches = [];
+  finalizedMatches = [];
+  playerGameCounts = {};
+
+  localStorage.clear();  // 저장된 데이터도 삭제
+
+  updatePlayerList();
+  updateMatchList();
+  document.getElementById("result").value = "";
+}
+
+window.onload = () => {
+  loadFromLocalStorage();
+  updatePlayerList();
+  updateMatchList();
+};
 </script>
 </body>
 </html>
