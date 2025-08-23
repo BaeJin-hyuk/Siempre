@@ -36,7 +36,7 @@
 
   <div id="playerList"></div>
 
-  <label>게임 수 제한 (인당): <input type="number" id="maxGames" value="3" min="1" /></label>
+  <label>게임 수 제한 (인당): <input type="number" id="maxGames" value="10" min="1" /></label>
   <label>최대 실력차: <input type="number" id="maxDiff" value="1" min="0" /></label>
   <br>
   <button onclick="generateMatches()">대진표 생성</button>
@@ -46,6 +46,11 @@
 
   <div id="matchList"></div>
   <textarea id="result" readonly></textarea>
+
+<div id="historyList" style="margin-top: 30px;">
+  <b>완료된 경기 히스토리:</b><br>
+</div>
+
 
 <script>
 let players = [];
@@ -124,6 +129,14 @@ function shuffle(array) {
   }
 }
 
+function deleteMatch(matchId) {
+  matches = matches.filter(m => m.id !== matchId);
+  updateMatchList();
+  saveToLocalStorage();
+}
+
+let matchIdCounter = 0;
+
 function generateMatches() {
   const maxGames = parseInt(document.getElementById("maxGames").value) || 3;
   const maxDiff = parseInt(document.getElementById("maxDiff").value) || 1;
@@ -155,13 +168,17 @@ function generateMatches() {
           const minSkill = Math.min(...skills);
           if (maxSkill - minSkill > maxDiff) continue;
 
+          // ✅ 성별 규칙 적용 (여성은 0,2,4명만 허용)
+          const femaleCount = group.filter(p => p.gender === "여").length;
+          if (!(femaleCount === 0 || femaleCount === 2 || femaleCount === 4)) continue;
+
           const team1 = [group[0], group[1]];
           const team2 = [group[2], group[3]];
 
           const keys = [team1.map(p => p.name).sort().join("-"), team2.map(p => p.name).sort().join("-")];
           if (keys.some(k => usedPairs.has(k))) continue;
 
-          matches.push({ team1, team2 });
+          matches.push({ id: matchIdCounter++, team1, team2 });
           keys.forEach(k => usedPairs.add(k));
 
           // ✅ recentPlayers 갱신 (최대 8명 유지)
@@ -181,8 +198,10 @@ function generateMatches() {
 saveToLocalStorage();
 }
 
-function finalizeMatch(index) {
-  const match = matches[index];
+function finalizeMatch(matchId) {
+  const match = matches.find(m => m.id === matchId);
+  if (!match) return;
+
 
   // 수동으로 선택된 선수 이름 가져오기
   const getPlayerFromSelect = (id) => {
@@ -190,10 +209,14 @@ function finalizeMatch(index) {
     return players.find(p => p.name === name);
   };
 
-  const p1 = getPlayerFromSelect(`team1_0_${index}`);
-  const p2 = getPlayerFromSelect(`team1_1_${index}`);
-  const p3 = getPlayerFromSelect(`team2_0_${index}`);
-  const p4 = getPlayerFromSelect(`team2_1_${index}`);
+  const p1 = getPlayerFromSelect(`team1_0_${match.id}`);
+  const p2 = getPlayerFromSelect(`team1_1_${match.id}`);
+  const p3 = getPlayerFromSelect(`team2_0_${match.id}`);
+  const p4 = getPlayerFromSelect(`team2_1_${match.id}`);
+
+  // ✅ 수동 선택 반영: match 객체를 최신화
+  match.team1 = [p1, p2];
+  match.team2 = [p3, p4];
 
   // 선수별 경기 수 증가
   [p1, p2, p3, p4].forEach(p => {
@@ -205,12 +228,13 @@ function finalizeMatch(index) {
   // finalizedMatches에 저장
   finalizedMatches.push({ team1: [p1, p2], team2: [p3, p4] });
 
-  // 해당 경기 삭제
-  matches.splice(index, 1);
+  // ✅ index 대신 id로 안전하게 제거
+  matches = matches.filter(m => m.id !== match.id);
 
   updatePlayerList();
   updateMatchList();
-saveToLocalStorage();
+  updateHistoryList();  // 👉 히스토리 리스트 갱신 호출을 꼭 이 위치에서!
+  saveToLocalStorage(); // 👉 저장도 완료 후 호출!
 }
 
 function updateMatchList() {
@@ -219,48 +243,51 @@ function updateMatchList() {
   container.innerHTML = "<b>경기 목록:</b><br>";
   result.value = "";
 
-  matches.forEach((m, idx) => {
-    const selectedNames = [];
+matches.forEach((m, idx) => {
+  const t1p1 = m.team1[0];
+  const t1p2 = m.team1[1];
+  const t2p1 = m.team2[0];
+  const t2p2 = m.team2[1];
 
-    // 선택된 기본 값
-    const t1p1 = m.team1[0];
-    selectedNames.push(t1p1.name);
-
-    const t1p2 = m.team1[1];
-    selectedNames.push(t1p2.name);
-
-    const t2p1 = m.team2[0];
-    selectedNames.push(t2p1.name);
-
-    const t2p2 = m.team2[1];
-    selectedNames.push(t2p2.name);
-
-    container.innerHTML += `
+  container.innerHTML += `
     <div class="match-item">
       ${idx+1}경기: 
-      ${playerSelect("team1_0_" + idx, t1p1, selectedNames.filter(n => n !== t1p1.name))} 
-      ${playerSelect("team1_1_" + idx, t1p2, selectedNames.filter(n => n !== t1p2.name))} 
+      ${playerSelect("team1_0_" + m.id, t1p1, [t1p2.name, t2p1.name, t2p2.name], m.id, 'team1', 0)} 
+      ${playerSelect("team1_1_" + m.id, t1p2, [t1p1.name, t2p1.name, t2p2.name], m.id, 'team1', 1)} 
       vs 
-      ${playerSelect("team2_0_" + idx, t2p1, selectedNames.filter(n => n !== t2p1.name))} 
-      ${playerSelect("team2_1_" + idx, t2p2, selectedNames.filter(n => n !== t2p2.name))} 
-      <button class="btn-sm" onclick="finalizeMatch(${idx})">✔️ 완료</button>
-      <button class="btn-sm" onclick="matches.splice(${idx},1); updateMatchList();">❌ 삭제</button>
+      ${playerSelect("team2_0_" + m.id, t2p1, [t1p1.name, t1p2.name, t2p2.name], m.id, 'team2', 0)} 
+      ${playerSelect("team2_1_" + m.id, t2p2, [t1p1.name, t1p2.name, t2p1.name], m.id, 'team2', 1)} 
+     <button class="btn-sm" onclick="finalizeMatch(${m.id})">✔️ 완료</button>
+     <button class="btn-sm" onclick="deleteMatch(${m.id})">❌ 삭제</button>
     </div>`;
     
     result.value += `${idx+1}경기: ${t1p1.name}, ${t1p2.name} vs ${t2p1.name}, ${t2p2.name}\n`;
   });
 }
 
-function playerSelect(id, selected, excludedNames = []) {
+// select 생성 시 change 이벤트 추가
+function playerSelect(id, selected, excludedNames = [], matchId, teamKey, playerIndex) {
   return `
-    <select id="${id}" onchange="updateDependentSelects(${id.split('_')[2]})">
+    <select id="${id}" onchange="onPlayerChange(${matchId}, '${teamKey}', ${playerIndex}, this.value)">
       ${players
         .filter(p => !excludedNames.includes(p.name))
-        .map(p => `<option value="${p.name}" ${p.name === selected.name ? "selected" : ""}>
-          ${p.name} (${skillToGrade(p.skill)}, ${p.gender})
-        </option>`).join("")}
+        .map(p => `
+          <option value="${p.name}" ${p.name === selected.name ? "selected" : ""}>
+            ${p.name} (${skillToGrade(p.skill)}, ${p.gender})
+          </option>
+        `).join("")}
     </select>`;
 }
+
+// select 변경 시 matches 객체 업데이트
+function onPlayerChange(matchId, teamKey, playerIndex, newName) {
+  const match = matches.find(m => m.id === matchId);
+  if (!match) return;
+  const player = players.find(p => p.name === newName);
+  if (!player) return;
+  match[teamKey][playerIndex] = player;
+}
+
 
 function resetAll() {
   if (!confirm("정말 모든 데이터를 초기화할까요? 복구할 수 없습니다.")) return;
@@ -274,13 +301,31 @@ function resetAll() {
 
   updatePlayerList();
   updateMatchList();
+  updateHistoryList();  // ✅ 히스토리도 초기화
   document.getElementById("result").value = "";
+}
+
+function updateHistoryList() {
+  const container = document.getElementById("historyList");
+  container.innerHTML = "<b>완료된 경기 히스토리:</b><br>";
+
+  if (finalizedMatches.length === 0) {
+    container.innerHTML += "아직 완료된 경기가 없습니다.";
+    return;
+  }
+
+  finalizedMatches.forEach((m, idx) => {
+    const t1 = m.team1.map(p => p.name).join(", ");
+    const t2 = m.team2.map(p => p.name).join(", ");
+    container.innerHTML += `${idx + 1}경기: ${t1} vs ${t2}<br>`;
+  });
 }
 
 window.onload = () => {
   loadFromLocalStorage();
   updatePlayerList();
   updateMatchList();
+  updateHistoryList();  // ✅ 여기에 있어야 히스토리가 표시됨
 };
 </script>
 </body>
